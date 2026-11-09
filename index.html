@@ -228,7 +228,7 @@ function render(){
   home();
 }
 function pick(){
-  app.innerHTML=(note?`<p class="hint">${esc(note)}</p>`:'')+`<h2 style="font-size:28px">기말 뿌시자</h2><div class="users">`+U.map((u,i)=>
+  app.innerHTML=(note?`<p class="hint">${esc(note)}</p>`:'')+`<h2 style="font-size:28px">우리 기말 뿌셔봅시다 <br> 그런데 당신은 누구신가요<br></h2><div class="users">`+U.map((u,i)=>
     `<div>${avatar(i,true)}<button class="big pri" data-act="user" data-i="${i}">${esc(u.name)}</button><button class="ghost" data-act="rename" data-i="${i}">이름</button></div>`).join('')+`</div><p class="hint">동그라미를 눌러 프로필 사진을 올릴 수 있어요.</p><input type="file" id="pf" accept="image/*" hidden>`;
 }
 function home(){
