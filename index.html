@@ -57,6 +57,7 @@ select{width:100%;font:inherit;color:var(--ink);background:var(--panel);border:1
 .sticky{position:sticky;top:0;background:var(--bg);padding:8px 0;z-index:5}
 .ex{white-space:pre-wrap;margin:10px 0 0;color:var(--ok)}.ex small{color:var(--mute)}
 .wr{white-space:pre-wrap;margin:10px 0 0}.wr small{color:var(--mute)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}.seg button{border:0;border-radius:0;background:none}.seg button.on{background:var(--acc);color:var(--accfg)}
 @media(prefers-reduced-motion:reduce){.card{transition:none}.card.flip{transform:none}}
 </style>
 </head>
@@ -87,7 +88,7 @@ let cur=load('fc_cur',null);
 let decks=load('fc_decks',[]);
 const prog=()=>U[cur].progress;
 let S=null, view='home', note='', busy=false;
-let pi=0,pt=null,E=null;
+let pi=0,pt=null,E=null,order=load('fc_order','shuffle');
 const avatar=(i,btn)=>{
   const ph=U[i].photo;
   if(!btn)return ph?`<img class="av" src="${ph}" alt="">`:'';
@@ -228,12 +229,13 @@ function render(){
   home();
 }
 function pick(){
-  app.innerHTML=(note?`<p class="hint">${esc(note)}</p>`:'')+`<h2 style="font-size:28px">우리 기말 뿌셔봅시다 <br> 그런데 당신은 누구신가요<br></h2><div class="users">`+U.map((u,i)=>
+  app.innerHTML=(note?`<p class="hint">${esc(note)}</p>`:'')+`<h2 style="font-size:28px">기말 뿌시자</h2><div class="users">`+U.map((u,i)=>
     `<div>${avatar(i,true)}<button class="big pri" data-act="user" data-i="${i}">${esc(u.name)}</button><button class="ghost" data-act="rename" data-i="${i}">이름</button></div>`).join('')+`</div><p class="hint">동그라미를 눌러 프로필 사진을 올릴 수 있어요.</p><input type="file" id="pf" accept="image/*" hidden>`;
 }
 function home(){
   const p=prog();
   app.innerHTML=(note?`<p class="hint">${esc(note)}</p>`:'')+`<div class="bar"><h2>단원</h2><div class="row"><button data-act="exam">시험</button><button class="pri" data-act="add">단원 추가</button></div></div>`+
+  (decks.length?`<div class="row" style="align-items:center;margin-bottom:12px"><span style="color:var(--mute)">카드 순서</span><div class="seg" role="group" aria-label="카드 순서"><button data-act="order" data-v="shuffle" class="${order==='shuffle'?'on':''}">셔플</button><button data-act="order" data-v="seq" class="${order==='seq'?'on':''}">순서대로</button></div></div>`:'')+
   (decks.length?decks.map(d=>{
     const k=d.cards.filter(c=>p[c.id]===1).length,n=d.cards.length,pct=n?Math.round(k/n*100):0;
     return `<section class="ch"><div class="ch-h"><h3>${esc(d.name)}</h3><span>${k}/${n} 암기 (${pct}%)</span></div>
@@ -273,7 +275,7 @@ function study(){
     <div class="row"><button class="pri" data-act="study" data-id="${S.deck.id}" data-m="weak">못 외운 카드 다시</button><button data-act="home">단원 목록</button></div></section>`;return;
   }
   const c=S.queue[S.i];
-  app.innerHTML=`<div class="count"><span>${esc(S.deck.name)}</span><span>${S.i+1} / ${S.queue.length}</span></div>
+  app.innerHTML=`<div class="count"><span>${esc(S.deck.name)} · ${S.order==='shuffle'?'셔플':'순서대로'}</span><span>${S.i+1} / ${S.queue.length}</span></div>
   <div class="card ${S.flip?'flip':''}" data-act="flip" tabindex="0" role="button" aria-label="카드 뒤집기"><small>${S.flip?'정답':'문제'}</small><div>${esc(S.flip?c.a:c.q)}</div></div>
   ${S.flip?`<div class="act"><button class="u" data-act="mark" data-v="2">모르겠어요</button><button class="k" data-act="mark" data-v="1">알아요</button></div>`:''}
   <p class="hint">스페이스: 뒤집기 · ← 모르겠어요 · → 알아요</p><div class="row" style="justify-content:center;margin-top:8px"><button class="ghost" data-act="home">그만하기</button></div>`;
@@ -358,8 +360,8 @@ function startStudy(id,m){
   const d=decks.find(x=>x.id===id),p=prog();
   let q=d.cards.filter(c=>m==='all'||p[c.id]!==1);
   if(!q.length){alert('모든 카드를 외웠어요! 전체 학습으로 복습해 보세요.');return}
-  q=q.map(c=>[Math.random(),c]).sort((a,b)=>a[0]-b[0]).map(x=>x[1]);
-  S={deck:d,queue:q,i:0,flip:false,k:0,u:0};view='study';render();
+  if(order==='shuffle')q=shuffle(q);
+  S={deck:d,queue:q,i:0,flip:false,k:0,u:0,order};view='study';render();
 }
 function mark(v){
   const c=S.queue[S.i],p=prog();p[c.id]=v;save('fc_U',U);send({[`users/${cur}/progress/${c.id}`]:v});
@@ -377,6 +379,7 @@ app.addEventListener('click',async e=>{
   else if(a==='exam'){view='exam';E=null;render();try{await pull();if(view==='exam'&&!E)render()}catch(err){}}
   else if(a==='exstart')startExam();
   else if(a==='exsubmit')submitExam();
+  else if(a==='order'){order=t.dataset.v;save('fc_order',order);render()}
   else if(a==='flip'){S.flip=!S.flip;render()}
   else if(a==='mark')mark(+t.dataset.v);
   else if(a==='reset'){if(confirm('내 진행도만 초기화할까요? 다른 이용자에겐 영향 없어요.')){const p=prog(),d=decks.find(x=>x.id===id),m={};d.cards.forEach(c=>{delete p[c.id];m[`users/${cur}/progress/${c.id}`]=null});save('fc_U',U);send(m);render()}}
