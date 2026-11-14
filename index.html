@@ -64,6 +64,8 @@ select{width:100%;font:inherit;color:var(--ink);background:var(--panel);border:1
 .bx.cover{background:var(--acc);color:var(--accfg);border-color:var(--accfg)}
 .bx.ok{border-color:var(--ok);background:rgba(127,209,164,.3)}.bx.no{border-color:var(--no);background:rgba(255,138,128,.3)}
 .arow{display:flex;align-items:center;gap:8px;margin:8px 0}.arow b{width:30px}.arow input{flex:1}.arow span{flex:1;white-space:pre-wrap}
+.pqg{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px;align-items:start}
+@media(max-width:560px){.pqg{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){.card{transition:none}.card.flip{transform:none}}
 </style>
 </head>
@@ -94,7 +96,7 @@ let cur=load('fc_cur',null);
 let decks=load('fc_decks',[]);
 const prog=()=>U[cur].progress;
 let S=null, view='home', note='', busy=false;
-let pi=0,pt=null,E=null,order=load('fc_order','shuffle'),Q=null,P=null,pqs=load('fc_pq',[]),imgs={};
+let pi=0,pt=null,E=null,order=load('fc_order','shuffle'),Q=null,pqs=load('fc_pq',[]),imgs={},pqState={},imgBusy={};
 const avatar=(i,btn)=>{
   const ph=U[i].photo;
   if(!btn)return ph?`<img class="av" src="${ph}" alt="">`:'';
@@ -138,7 +140,7 @@ async function pull(){
   }
   decks=Object.entries(db.decks||{}).map(([id,d])=>({id,name:d.name||'(이름 없음)',o:d.o||0,cards:Object.entries(d.cards||{}).map(([cid,c])=>({id:cid,q:c.q,a:c.a,o:c.o||0})).sort((x,y)=>x.o-y.o)})).sort((x,y)=>x.o-y.o);
   save('fc_decks',decks);
-  pqs=Object.entries(db.pq||{}).map(([id,v])=>({id,name:v.name||'(제목 없음)',o:v.o||0,boxes:v.boxes||[]})).sort((a,b)=>a.o-b.o);save('fc_pq',pqs);
+  pqs=Object.entries(db.pq||{}).map(([id,v])=>({id,o:v.o||0,boxes:v.boxes||[]})).sort((a,b)=>a.o-b.o);save('fc_pq',pqs);
   const us=db.users||{};
   for(let i=0;i<3;i++){const r=us[i];if(r)U[i]={name:r.name||U[i].name,photo:r.photo||'',progress:r.progress||{},exam:r.exam||null}}
   save('fc_U',U);
@@ -236,7 +238,6 @@ function render(){
   if(view==='exam')return examView();
   if(view==='pq')return pqList();
   if(view==='pqedit')return pqEdit();
-  if(view==='pqsolve')return pqSolve();
   home();
 }
 function pick(){
@@ -297,12 +298,14 @@ const L=i=>String.fromCharCode(65+i);
 const grade=(u,c)=>{const n=x=>x.toLowerCase().replace(/\s+/g,'');return c.split('/').some(x=>n(x)&&n(x)===n(u))};
 const boxStyle=b=>`left:${b.x*100}%;top:${b.y*100}%;width:${b.w*100}%;height:${b.h*100}%`;
 function pqList(){
-  app.innerHTML=`<div class="bar"><h2>그림 퀴즈</h2><div class="row"><button data-act="home">돌아가기</button><button class="pri" data-act="pqnew">새 그림 퀴즈</button></div></div>`+(pqs.length?pqs.map(p=>`<section class="ch"><div class="ch-h"><h3>${esc(p.name)}</h3><span>빈칸 ${p.boxes.length}개</span></div><div class="row" style="margin-top:10px"><button class="pri" data-act="pqsolve" data-id="${p.id}">풀기</button><button class="ghost" data-act="pqdel" data-id="${p.id}">삭제</button></div></section>`).join(''):`<p class="empty">아직 그림 퀴즈가 없어요.</p>`);
+  app.innerHTML=`<div class="bar"><h2>그림 퀴즈</h2><div class="row"><button data-act="home">돌아가기</button><button class="pri" data-act="pqnew">새 그림 퀴즈</button></div></div>`+
+  (pqs.length?pqs.map((p,n)=>`<section class="ch"><div class="ch-h"><span>${n+1}번</span><button class="ghost" data-act="pqdel" data-id="${p.id}">삭제</button></div>
+  <div class="pqg" style="margin-top:10px"><div id="pi-${p.id}">${imgs[p.id]?pqStageHtml(p):'<p class="empty">사진 불러오는 중…</p>'}</div><div id="pr-${p.id}">${pqRight(p)}</div></div></section>`).join(''):`<p class="empty">아직 그림 퀴즈가 없어요.</p>`);
+  pqs.forEach(p=>{if(!imgs[p.id])loadPqImg(p.id)});
 }
 function pqEdit(){
   app.innerHTML=`<div class="bar"><h2>그림 퀴즈 만들기</h2><button data-act="pq">돌아가기</button></div>
-  <label for="pn" style="margin-top:0">제목</label><input type="text" id="pn" value="${esc(Q.name)}" placeholder="예: 위장관 구조 그림">
-  <label for="pimg">사진</label><input type="file" id="pimg" accept="image/*"><div id="pst"></div>`;
+  <label for="pimg" style="margin-top:0">사진</label><input type="file" id="pimg" accept="image/*"><div id="pst"></div>`;
   pqStage();
 }
 function pqBoxes(){
@@ -323,22 +326,31 @@ function pqStage(){
   st.addEventListener('pointerup',e=>{if(!d)return;const p=pt(e),b={x:Math.min(d.x,p.x),y:Math.min(d.y,p.y),w:Math.abs(p.x-d.x),h:Math.abs(p.y-d.y),a:''};tmp.remove();d=null;if(b.w>.015&&b.h>.015){Q.boxes.push(b);pqBoxes()}});
   st.addEventListener('pointercancel',()=>{if(tmp)tmp.remove();d=null});
 }
-async function openPq(id){
-  const p=pqs.find(x=>x.id===id);if(!p)return;
-  P={p,ans:p.boxes.map(()=>''),done:false,fix:p.boxes.map(()=>false)};view='pqsolve';
-  if(!imgs[id]){app.innerHTML='<p class="empty">사진을 불러오는 중…</p>';try{imgs[id]=await dbReq('GET',undefined,'pqimg/'+id)}catch(e){}}
-  if(!imgs[id]){alert('사진을 불러오지 못했어요.');view='pq'}
-  render();
+const pqSt=id=>pqState[id]||(pqState[id]={ans:[],done:false,fix:[]});
+function pqStageHtml(p){
+  const st=pqSt(p.id),ok=i=>st.fix[i]||grade(st.ans[i]||'',p.boxes[i].a);
+  return `<div class="stage" style="cursor:default"><img src="${imgs[p.id]}" alt="">`+p.boxes.map((b,i)=>`<div class="bx ${st.done?(ok(i)?'ok':'no'):'cover'}" style="${boxStyle(b)}">${L(i)}</div>`).join('')+`</div>`;
 }
-function pqSolve(){
-  const p=P.p,ok=i=>P.fix[i]||grade(P.ans[i],p.boxes[i].a);
+function pqRight(p){
+  const st=pqSt(p.id),ok=i=>st.fix[i]||grade(st.ans[i]||'',p.boxes[i].a);
+  if(!st.done)return p.boxes.map((b,i)=>`<div class="arow"><b>${L(i)})</b><input type="text" data-q="${p.id}" data-sa="${i}" value="${esc(st.ans[i]||'')}" placeholder="정답"></div>`).join('')+`<button class="pri" data-act="pqgrade" data-id="${p.id}" style="width:100%;margin-top:6px">채점</button>`;
   const sc=p.boxes.filter((b,i)=>ok(i)).length;
-  app.innerHTML=`<div class="bar"><h2>${esc(p.name)}</h2><button data-act="pq">목록</button></div>
-  <div class="stage" style="cursor:default"><img src="${imgs[p.id]}" alt="">`+p.boxes.map((b,i)=>`<div class="bx ${P.done?(ok(i)?'ok':'no'):'cover'}" style="${boxStyle(b)}">${L(i)}</div>`).join('')+`</div>`+
-  (P.done?`<section class="ch" style="margin-top:12px"><div style="font-size:32px;font-weight:700">${sc} <span style="font-size:18px;color:var(--mute)">/ ${p.boxes.length}</span></div>`+
-    p.boxes.map((b,i)=>`<div class="arow"><b>${L(i)})</b><span>${ok(i)?'✓':'✗'} 내 답: ${esc(P.ans[i])||'(빈칸)'} → 정답: ${esc(b.a)}</span>${ok(i)?'':`<button class="ghost" data-act="pqfix" data-i="${i}">맞았어요</button>`}</div>`).join('')+
-    `<div class="row" style="margin-top:10px"><button class="pri" data-act="pqretry">다시 풀기</button><button data-act="pq">목록</button></div></section>`
-  :`<div style="margin-top:12px">`+p.boxes.map((b,i)=>`<div class="arow"><b>${L(i)})</b><input type="text" data-sa="${i}" value="${esc(P.ans[i])}" placeholder="정답"></div>`).join('')+`<button class="pri" data-act="pqgrade" style="width:100%;padding:14px;margin-top:8px">채점</button></div>`);
+  return `<div style="font-size:28px;font-weight:700">${sc} <span style="font-size:16px;color:var(--mute)">/ ${p.boxes.length}</span></div>`+
+    p.boxes.map((b,i)=>`<div class="arow"><b>${L(i)})</b><span>${ok(i)?'✓':'✗'} ${esc(st.ans[i]||'(빈칸)')} → ${esc(b.a)}</span>${ok(i)?'':`<button class="ghost" data-act="pqfix" data-id="${p.id}" data-i="${i}">맞았어요</button>`}</div>`).join('')+
+    `<button data-act="pqretry" data-id="${p.id}" style="margin-top:6px">다시 풀기</button>`;
+}
+function pqRefresh(id){
+  const p=pqs.find(x=>x.id===id);if(!p)return;
+  const a=$('#pi-'+id),b=$('#pr-'+id);
+  if(a&&imgs[id])a.innerHTML=pqStageHtml(p);
+  if(b)b.innerHTML=pqRight(p);
+}
+async function loadPqImg(id){
+  if(imgBusy[id])return;imgBusy[id]=1;
+  try{imgs[id]=await dbReq('GET',undefined,'pqimg/'+id)}catch(e){}
+  imgBusy[id]=0;
+  if(view!=='pq')return;
+  if(imgs[id])pqRefresh(id);else{const a=$('#pi-'+id);if(a)a.innerHTML='<p class="empty">사진을 불러오지 못했어요.</p>'}
 }
 
 /* ---------- 시험 (O/X, 1회 응시) ---------- */
@@ -439,26 +451,23 @@ app.addEventListener('click',async e=>{
   else if(a==='exam'){view='exam';E=null;render();try{await pull();if(view==='exam'&&!E)render()}catch(err){}}
   else if(a==='exstart')startExam();
   else if(a==='exsubmit')submitExam();
-  else if(a==='pq'){Q=null;P=null;view='pq';render();try{await pull();if(view==='pq')render()}catch(err){}}
-  else if(a==='pqnew'){Q={name:'',img:'',boxes:[]};view='pqedit';render()}
+  else if(a==='pq'){Q=null;view='pq';render();try{await pull();if(view==='pq')render()}catch(err){}}
+  else if(a==='pqnew'){Q={img:'',boxes:[]};view='pqedit';render()}
   else if(a==='pqundo'){Q.boxes.pop();pqBoxes()}
   else if(a==='pqclear'){Q.boxes=[];pqBoxes()}
   else if(a==='pqsave'){
-    const name=(Q.name||'').trim();
-    if(!name)return alert('제목을 입력해 주세요.');
     if(!Q.img||!Q.boxes.length)return alert('사진 위에 가릴 곳을 한 개 이상 그려 주세요.');
     if(Q.boxes.some(b=>!b.a.trim()))return alert('모든 박스에 정답을 적어 주세요.');
     const id='p'+Date.now().toString(36),r=n=>Math.round(n*10000)/10000;
-    const meta={name,o:Date.now(),boxes:Q.boxes.map(b=>({x:r(b.x),y:r(b.y),w:r(b.w),h:r(b.h),a:b.a.trim()}))};
+    const meta={o:Date.now(),boxes:Q.boxes.map(b=>({x:r(b.x),y:r(b.y),w:r(b.w),h:r(b.h),a:b.a.trim()}))};
     pqs.push({id,...meta});save('fc_pq',pqs);imgs[id]=Q.img;
     send({['pq/'+id]:meta,['pqimg/'+id]:Q.img});
     Q=null;view='pq';render();
   }
-  else if(a==='pqsolve')openPq(id);
-  else if(a==='pqdel'){if(confirm('이 그림 퀴즈를 삭제할까요? 모든 이용자에게서 사라져요.')){pqs=pqs.filter(x=>x.id!==id);save('fc_pq',pqs);send({['pq/'+id]:null,['pqimg/'+id]:null});render()}}
-  else if(a==='pqgrade'){P.done=true;render();window.scrollTo(0,0)}
-  else if(a==='pqfix'){P.fix[i]=true;render()}
-  else if(a==='pqretry'){P.ans=P.p.boxes.map(()=>'');P.fix=P.p.boxes.map(()=>false);P.done=false;render()}
+  else if(a==='pqdel'){if(confirm('이 그림 퀴즈를 삭제할까요? 모든 이용자에게서 사라져요.')){pqs=pqs.filter(x=>x.id!==id);delete pqState[id];save('fc_pq',pqs);send({['pq/'+id]:null,['pqimg/'+id]:null});render()}}
+  else if(a==='pqgrade'){pqSt(id).done=true;pqRefresh(id)}
+  else if(a==='pqfix'){pqSt(id).fix[i]=true;pqRefresh(id)}
+  else if(a==='pqretry'){pqState[id]={ans:[],done:false,fix:[]};pqRefresh(id)}
   else if(a==='order'){order=t.dataset.v;save('fc_order',order);render()}
   else if(a==='flip'){S.flip=!S.flip;render()}
   else if(a==='mark')mark(+t.dataset.v);
@@ -502,8 +511,7 @@ app.addEventListener('change',e=>{
 app.addEventListener('input',e=>{
   const d=e.target.dataset;
   if(d.pa!==undefined&&Q)Q.boxes[+d.pa].a=e.target.value;
-  else if(d.sa!==undefined&&P)P.ans[+d.sa]=e.target.value;
-  else if(e.target.id==='pn'&&Q)Q.name=e.target.value;
+  else if(d.sa!==undefined)pqSt(d.q).ans[+d.sa]=e.target.value;
 });
 $('#who').addEventListener('click',e=>{if(e.target.dataset.act==='switch'){cur=null;save('fc_cur',null);view='home';render()}});
 const goMain=()=>{cur=null;save('fc_cur',null);view='home';E=null;S=null;render();window.scrollTo(0,0)};
@@ -524,7 +532,7 @@ $('#adm').onclick=()=>{
   save('fc_db',v.trim());sync();
 };
 window.addEventListener('online',flush);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&view!=='study'&&view!=='pqedit'&&view!=='pqsolve'&&!(view==='exam'&&E))sync()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&view!=='study'&&view!=='pqedit'&&view!=='pq'&&!(view==='exam'&&E))sync()});
 render();
 sync();
 </script>
