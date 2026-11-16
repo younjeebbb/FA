@@ -303,13 +303,13 @@ const inCh=(p,id)=>id===''?!pqcs.some(c=>c.id===p.c):p.c===id;
 function pqChapters(){
   const rows=[...pqcs,...(pqs.some(p=>inCh(p,''))?[{id:'',name:'미분류'}]:[])];
   app.innerHTML=`<div class="bar"><h2>그림 퀴즈</h2><div class="row"><button data-act="home">돌아가기</button><button class="pri" data-act="pqcadd">단원 추가</button></div></div>`+
-  (rows.length?rows.map(c=>`<section class="ch"><div class="ch-h"><h3>${esc(c.name)}</h3><span>${pqs.filter(p=>inCh(p,c.id)).length}개</span></div><div class="row" style="margin-top:10px"><button class="pri" data-act="pqopen" data-id="${c.id}">열기</button>${c.id?`<button class="ghost" data-act="pqcren" data-id="${c.id}">이름 수정</button><button class="ghost" data-act="pqcdel" data-id="${c.id}">단원 삭제</button>`:''}</div></section>`).join(''):`<p class="empty">아직 단원이 없어요. 단원 추가로 만들어 주세요.</p>`);
+  (rows.length?rows.map(c=>`<section class="ch"><div class="ch-h"><h3>${esc(c.name)}</h3><span>${pqs.filter(p=>inCh(p,c.id)).length}개</span></div><div class="row" style="margin-top:10px"><button class="pri" data-act="pqopen" data-id="${c.id}">열기</button>${c.id?`<button class="ghost" data-act="pqcren" data-id="${c.id}">이름 수정</button><button class="ghost" data-act="pqcdel" data-id="${c.id}">단원 삭제</button>`:`<button class="ghost" data-act="pqcren" data-id="">단원 이름 정하기</button>`}</div></section>`).join(''):`<p class="empty">아직 단원이 없어요. 단원 추가로 만들어 주세요.</p>`);
 }
 function pqList(){
   const ch=PC===''?{name:'미분류'}:pqcs.find(c=>c.id===PC);
   if(!ch){view='pq';return pqChapters()}
   const list=pqs.filter(p=>inCh(p,PC));
-  app.innerHTML=`<div class="bar"><h2>${esc(ch.name)}</h2><div class="row"><button data-act="pq">단원 목록</button>${PC!==''?`<button data-act="pqcren" data-id="${PC}">이름 수정</button><button class="pri" data-act="pqnew">새 그림 퀴즈</button>`:''}</div></div>`+
+  app.innerHTML=`<div class="bar"><h2>${esc(ch.name)}</h2><div class="row"><button data-act="pq">단원 목록</button>${PC!==''?`<button data-act="pqcren" data-id="${PC}">이름 수정</button><button class="pri" data-act="pqnew">새 그림 퀴즈</button>`:`<button class="pri" data-act="pqcren" data-id="">단원 이름 정하기</button>`}</div></div>`+
   (list.length?list.map((p,n)=>`<section class="ch"><div class="ch-h"><span>${n+1}번</span><button class="ghost" data-act="pqdel" data-id="${p.id}">삭제</button></div>
   <div class="pqg" style="margin-top:10px"><div id="pi-${p.id}">${imgs[p.id]?pqStageHtml(p):'<p class="empty">사진 불러오는 중…</p>'}</div><div id="pr-${p.id}">${pqRight(p)}</div></div></section>`).join(''):`<p class="empty">아직 그림 퀴즈가 없어요.</p>`);
   list.forEach(p=>{if(!imgs[p.id])loadPqImg(p.id)});
@@ -516,6 +516,17 @@ app.addEventListener('click',async e=>{
     if(n&&n.trim()){const c={id:'c'+Date.now().toString(36),name:n.trim(),o:Date.now()};pqcs.push(c);save('fc_pqc',pqcs);send({['pqc/'+c.id]:{name:c.name,o:c.o}});render()}
   }
   else if(a==='pqcren'){
+    if(id===''){
+      const n=prompt('단원 이름을 정해 주세요. 미분류 그림 퀴즈가 모두 이 단원으로 옮겨져요.');
+      if(!n||!n.trim())return;
+      const orphans=pqs.filter(p=>inCh(p,'')),cid='c'+Date.now().toString(36),o=Date.now();
+      pqcs.push({id:cid,name:n.trim(),o});
+      const m={['pqc/'+cid]:{name:n.trim(),o}};
+      orphans.forEach(p=>{p.c=cid;m['pq/'+p.id+'/c']=cid});
+      save('fc_pqc',pqcs);save('fc_pq',pqs);send(m);
+      if(PC==='')PC=cid;
+      render();return;
+    }
     const c=pqcs.find(x=>x.id===id);if(!c)return;
     const n=prompt('단원 이름 수정',c.name);
     if(n&&n.trim()&&n.trim()!==c.name){c.name=n.trim();save('fc_pqc',pqcs);send({['pqc/'+id+'/name']:c.name});render()}
