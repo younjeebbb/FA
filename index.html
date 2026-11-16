@@ -286,13 +286,13 @@ function preview(){
 function study(){
   if(S.i>=S.queue.length){
     app.innerHTML=`<div class="bar"><h2>${esc(S.deck.name)}</h2></div><section class="ch"><h3>끝!</h3><p>알아요 ${S.k}장, 모르겠어요 ${S.u}장</p>
-    <div class="row"><button class="pri" data-act="study" data-id="${S.deck.id}" data-m="weak">못 외운 카드 다시</button><button data-act="prev">마지막 카드로 돌아가기</button><button data-act="home">단원 목록</button></div></section>`;return;
+    <div class="row"><button class="pri" data-act="study" data-id="${S.deck.id}" data-m="weak">못 외운 카드 다시</button><button data-act="prev">이전으로 돌아가기</button><button data-act="home">단원 목록</button></div></section>`;return;
   }
   const c=S.queue[S.i];
   app.innerHTML=`<div class="count"><span>${esc(S.deck.name)} · ${S.order==='shuffle'?'셔플':'순서대로'}</span><span>${S.i+1} / ${S.queue.length}</span></div>
   <div class="card ${S.flip?'flip':''}" data-act="flip" tabindex="0" role="button" aria-label="카드 뒤집기"><small>${S.flip?'정답':'문제'}</small><div>${esc(S.flip?c.a:c.q)}</div></div>
   ${S.flip?`<div class="act"><button class="u" data-act="mark" data-v="2">모르겠어요</button><button class="k" data-act="mark" data-v="1">알아요</button></div>`:''}
-  <p class="hint">스페이스: 뒤집기 · ← 모르겠어요 · → 알아요 · ↑ 이전 카드</p><div class="row" style="justify-content:center;margin-top:8px">${S.i>0?'<button data-act="prev">← 이전 카드</button>':''}<button class="ghost" data-act="home">그만하기</button></div>`;
+  ${S.i>0?'<button data-act="prev" style="width:100%;margin-top:10px">← 이전으로 돌아가기</button>':''}<p class="hint">스페이스: 뒤집기 · ← 모르겠어요 · → 알아요 · ↑ 이전으로</p><div class="row" style="justify-content:center;margin-top:8px"><button class="ghost" data-act="home">그만하기</button></div>`;
 }
 
 /* ---------- 그림 퀴즈 (단답형) ---------- */
