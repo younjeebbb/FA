@@ -303,13 +303,13 @@ const inCh=(p,id)=>id===''?!pqcs.some(c=>c.id===p.c):p.c===id;
 function pqChapters(){
   const rows=[...pqcs,...(pqs.some(p=>inCh(p,''))?[{id:'',name:'미분류'}]:[])];
   app.innerHTML=`<div class="bar"><h2>그림 퀴즈</h2><div class="row"><button data-act="home">돌아가기</button><button class="pri" data-act="pqcadd">단원 추가</button></div></div>`+
-  (rows.length?rows.map(c=>`<section class="ch"><div class="ch-h"><h3>${esc(c.name)}</h3><span>${pqs.filter(p=>inCh(p,c.id)).length}개</span></div><div class="row" style="margin-top:10px"><button class="pri" data-act="pqopen" data-id="${c.id}">열기</button>${c.id?`<button class="ghost" data-act="pqcdel" data-id="${c.id}">단원 삭제</button>`:''}</div></section>`).join(''):`<p class="empty">아직 단원이 없어요. 단원 추가로 만들어 주세요.</p>`);
+  (rows.length?rows.map(c=>`<section class="ch"><div class="ch-h"><h3>${esc(c.name)}</h3><span>${pqs.filter(p=>inCh(p,c.id)).length}개</span></div><div class="row" style="margin-top:10px"><button class="pri" data-act="pqopen" data-id="${c.id}">열기</button>${c.id?`<button class="ghost" data-act="pqcren" data-id="${c.id}">이름 수정</button><button class="ghost" data-act="pqcdel" data-id="${c.id}">단원 삭제</button>`:''}</div></section>`).join(''):`<p class="empty">아직 단원이 없어요. 단원 추가로 만들어 주세요.</p>`);
 }
 function pqList(){
   const ch=PC===''?{name:'미분류'}:pqcs.find(c=>c.id===PC);
   if(!ch){view='pq';return pqChapters()}
   const list=pqs.filter(p=>inCh(p,PC));
-  app.innerHTML=`<div class="bar"><h2>${esc(ch.name)}</h2><div class="row"><button data-act="pq">단원 목록</button>${PC!==''?'<button class="pri" data-act="pqnew">새 그림 퀴즈</button>':''}</div></div>`+
+  app.innerHTML=`<div class="bar"><h2>${esc(ch.name)}</h2><div class="row"><button data-act="pq">단원 목록</button>${PC!==''?`<button data-act="pqcren" data-id="${PC}">이름 수정</button><button class="pri" data-act="pqnew">새 그림 퀴즈</button>`:''}</div></div>`+
   (list.length?list.map((p,n)=>`<section class="ch"><div class="ch-h"><span>${n+1}번</span><button class="ghost" data-act="pqdel" data-id="${p.id}">삭제</button></div>
   <div class="pqg" style="margin-top:10px"><div id="pi-${p.id}">${imgs[p.id]?pqStageHtml(p):'<p class="empty">사진 불러오는 중…</p>'}</div><div id="pr-${p.id}">${pqRight(p)}</div></div></section>`).join(''):`<p class="empty">아직 그림 퀴즈가 없어요.</p>`);
   list.forEach(p=>{if(!imgs[p.id])loadPqImg(p.id)});
@@ -365,13 +365,42 @@ async function loadPqImg(id){
 }
 
 /* ---------- 랜덤 20문제 (문제 먼저, 정답은 마지막에) ---------- */
+const nm=x=>String(x).trim().replace(/\s+/g,' ');
+function rndScopes(){
+  const m=new Map(),get=n=>{const k=nm(n);if(!m.has(k))m.set(k,{name:k,cards:0,pics:0});return m.get(k)};
+  decks.forEach(d=>{get(d.name).cards+=d.cards.length});
+  pqcs.forEach(c=>{get(c.name).pics+=pqs.filter(p=>p.c===c.id).length});
+  return [...m.values()].filter(x=>x.cards+x.pics>0);
+}
+function rndPool(sc){
+  const pool=[];
+  decks.filter(d=>sc==='all'||nm(d.name)===sc).forEach(d=>d.cards.forEach(c=>pool.push({t:'card',q:c.q,a:c.a})));
+  pqs.filter(p=>{if(sc==='all')return true;const c=pqcs.find(x=>x.id===p.c);return c&&nm(c.name)===sc}).forEach(p=>pool.push({t:'pic',id:p.id,boxes:p.boxes}));
+  return pool;
+}
+const rndStage=(x,show)=>`<div class="stage" style="cursor:default"><img src="${imgs[x.id]}" alt="">`+x.boxes.map((b,i)=>`<div class="bx${show?'':' cover'}" style="${boxStyle(b)}">${L(i)}</div>`).join('')+`</div>`;
+const rbusy={};
+async function loadRndImg(id){
+  if(rbusy[id])return;rbusy[id]=1;
+  try{imgs[id]=await dbReq('GET',undefined,'pqimg/'+id)}catch(e){}
+  rbusy[id]=0;
+  if(view!=='rnd'||!R)return;
+  const x=R.items.find(y=>y.t==='pic'&&y.id===id),a=$('#ri-'+id);
+  if(a)a.innerHTML=imgs[id]&&x?rndStage(x,R.show):'<p class="empty">사진을 불러오지 못했어요.</p>';
+}
 function rndView(){
-  const ds=decks.filter(d=>d.cards.length),total=ds.reduce((n,d)=>n+d.cards.length,0);
+  const sc=rndScopes(),cn=decks.reduce((n,d)=>n+d.cards.length,0);
+  if(rsc!=='all'&&!sc.some(x=>x.name===rsc))rsc='all';
+  const lab=(c,p)=>[c&&`카드 ${c}장`,p&&`그림 ${p}개`].filter(Boolean).join(' · ');
   app.innerHTML=`<div class="bar"><h2>랜덤 20문제</h2><button data-act="home">돌아가기</button></div>
   <section class="ch"><label for="rs" style="margin-top:0">범위</label>
-  <select id="rs"><option value="all"${rsc==='all'?' selected':''}>전체 단원 (${total}장)</option>${ds.map(d=>`<option value="${d.id}"${rsc===d.id?' selected':''}>${esc(d.name)} (${d.cards.length}장)</option>`).join('')}</select>
-  <div class="row" style="margin-top:12px"><button class="pri" data-act="rndgo">${R?'다시 뽑기':'뽑기'}</button></div></section>`+
-  (R?R.items.map((x,k)=>`<section class="ch"><div class="qn">${k+1}번</div><div style="white-space:pre-wrap">${esc(x.q)}</div>${R.show?`<p class="ex"><small>정답</small><br>${esc(x.a)}</p>`:''}</section>`).join('')+(R.show?'':`<button class="pri" data-act="rndshow" style="width:100%;padding:14px">정답 보기</button>`):'');
+  <select id="rs"><option value="all"${rsc==='all'?' selected':''}>전체 단원 (${lab(cn,pqs.length)||'없음'})</option>${sc.map(x=>`<option value="${esc(x.name)}"${rsc===x.name?' selected':''}>${esc(x.name)} (${lab(x.cards,x.pics)})</option>`).join('')}</select>
+  <p class="hint" style="text-align:left">플래시카드와 그림 퀴즈에서 함께 뽑아요. 이름이 같은 단원은 합쳐져요.</p>
+  <div class="row" style="margin-top:8px"><button class="pri" data-act="rndgo">${R?'다시 뽑기':'뽑기'}</button></div></section>`+
+  (R?R.items.map((x,k)=>x.t==='pic'
+    ?`<section class="ch"><div class="qn">${k+1}번 · 그림</div><div id="ri-${x.id}">${imgs[x.id]?rndStage(x,R.show):'<p class="empty">사진 불러오는 중…</p>'}</div>${R.show?`<p class="ex"><small>정답</small><br>${x.boxes.map((b,i)=>`${L(i)}) ${esc(b.a)}`).join('\n')}</p>`:''}</section>`
+    :`<section class="ch"><div class="qn">${k+1}번</div><div style="white-space:pre-wrap">${esc(x.q)}</div>${R.show?`<p class="ex"><small>정답</small><br>${esc(x.a)}</p>`:''}</section>`).join('')+(R.show?'':`<button class="pri" data-act="rndshow" style="width:100%;padding:14px">정답 보기</button>`):'');
+  if(R)R.items.filter(x=>x.t==='pic'&&!imgs[x.id]).forEach(x=>loadRndImg(x.id));
 }
 
 /* ---------- 시험 (O/X, 1회 응시) ---------- */
@@ -486,6 +515,11 @@ app.addEventListener('click',async e=>{
     const n=prompt('단원 이름');
     if(n&&n.trim()){const c={id:'c'+Date.now().toString(36),name:n.trim(),o:Date.now()};pqcs.push(c);save('fc_pqc',pqcs);send({['pqc/'+c.id]:{name:c.name,o:c.o}});render()}
   }
+  else if(a==='pqcren'){
+    const c=pqcs.find(x=>x.id===id);if(!c)return;
+    const n=prompt('단원 이름 수정',c.name);
+    if(n&&n.trim()&&n.trim()!==c.name){c.name=n.trim();save('fc_pqc',pqcs);send({['pqc/'+id+'/name']:c.name});render()}
+  }
   else if(a==='pqcdel'){
     if(confirm('이 단원과 안에 있는 그림 퀴즈가 모두 삭제돼요. 모든 이용자에게서 사라져요. 삭제할까요?')){
       const m={['pqc/'+id]:null};
@@ -493,11 +527,11 @@ app.addEventListener('click',async e=>{
       pqs=pqs.filter(p=>!inCh(p,id));pqcs=pqcs.filter(c=>c.id!==id);save('fc_pq',pqs);save('fc_pqc',pqcs);send(m);render();
     }
   }
-  else if(a==='rnd'){R=null;view='rnd';render()}
+  else if(a==='rnd'){R=null;view='rnd';render();try{await pull();if(view==='rnd'&&!R)render()}catch(err){}}
   else if(a==='rndgo'){
     rsc=$('#rs').value;
-    const pool=decks.filter(d=>rsc==='all'||d.id===rsc).flatMap(d=>d.cards.map(c=>({q:c.q,a:c.a})));
-    if(!pool.length)return alert('뽑을 카드가 없어요.');
+    const pool=rndPool(rsc);
+    if(!pool.length)return alert('뽑을 문제가 없어요.');
     R={items:shuffle(pool).slice(0,20),show:false};render();
   }
   else if(a==='rndshow'){R.show=true;render()}
