@@ -95,7 +95,7 @@ let cur=load('fc_cur',null);
 let decks=load('fc_decks',[]);
 const prog=()=>U[cur].progress;
 let S=null, view='home', note='', busy=false;
-let pi=0,pt=null,E=null,order=load('fc_order','shuffle'),Q=null,pqs=load('fc_pq',[]),imgs={},pqState={},imgBusy={},PC='',pqcs=load('fc_pqc',[]),R=null,rsc='all';
+let pi=0,pt=null,E=null,order=load('fc_order','shuffle'),Q=null,pqs=load('fc_pq',[]),imgs={},pqState={},imgBusy={},PC='',pqcs=load('fc_pqc',[]),R=null,rsc='all',mvMsg='';
 const avatar=(i,btn)=>{
   const ph=U[i].photo;
   if(!btn)return ph?`<img class="av" src="${ph}" alt="">`:'';
@@ -309,8 +309,9 @@ function pqList(){
   const ch=PC===''?{name:'미분류'}:pqcs.find(c=>c.id===PC);
   if(!ch){view='pq';return pqChapters()}
   const list=pqs.filter(p=>inCh(p,PC));
-  app.innerHTML=`<div class="bar"><h2>${esc(ch.name)}</h2><div class="row"><button data-act="pq">단원 목록</button>${PC!==''?`<button data-act="pqcren" data-id="${PC}">이름 수정</button><button class="pri" data-act="pqnew">새 그림 퀴즈</button>`:`<button class="pri" data-act="pqcren" data-id="">단원 이름 정하기</button>`}</div></div>`+
-  (list.length?list.map((p,n)=>`<section class="ch"><div class="ch-h"><span>${n+1}번</span><button class="ghost" data-act="pqdel" data-id="${p.id}">삭제</button></div>
+  const mv=p=>{const o=pqcs.filter(c=>c.id!==PC);return o.length?`<select data-mv="${p.id}" aria-label="다른 단원으로 이동" style="width:auto;padding:6px 10px"><option value="">단원 이동…</option>${o.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>`:''};
+  app.innerHTML=(mvMsg?`<p class="hint" style="text-align:left">${esc(mvMsg)}</p>`:'')+`<div class="bar"><h2>${esc(ch.name)}</h2><div class="row"><button data-act="pq">단원 목록</button>${PC!==''?`<button data-act="pqcren" data-id="${PC}">이름 수정</button><button class="pri" data-act="pqnew">새 그림 퀴즈</button>`:`<button class="pri" data-act="pqcren" data-id="">단원 이름 정하기</button>`}</div></div>`+
+  (list.length?list.map((p,n)=>`<section class="ch"><div class="ch-h"><span>${n+1}번</span><div class="row" style="align-items:center">${mv(p)}<button class="ghost" data-act="pqdel" data-id="${p.id}">삭제</button></div></div>
   <div class="pqg" style="margin-top:10px"><div id="pi-${p.id}">${imgs[p.id]?pqStageHtml(p):'<p class="empty">사진 불러오는 중…</p>'}</div><div id="pr-${p.id}">${pqRight(p)}</div></div></section>`).join(''):`<p class="empty">아직 그림 퀴즈가 없어요.</p>`);
   list.forEach(p=>{if(!imgs[p.id])loadPqImg(p.id)});
 }
@@ -508,8 +509,8 @@ app.addEventListener('click',async e=>{
   else if(a==='exam'){view='exam';E=null;render();try{await pull();if(view==='exam'&&!E)render()}catch(err){}}
   else if(a==='exstart')startExam();
   else if(a==='exsubmit')submitExam();
-  else if(a==='pq'){Q=null;view='pq';render();try{await pull();if(view==='pq')render()}catch(err){}}
-  else if(a==='pqopen'){PC=id;view='pqc';render()}
+  else if(a==='pq'){Q=null;mvMsg='';view='pq';render();try{await pull();if(view==='pq')render()}catch(err){}}
+  else if(a==='pqopen'){PC=id;mvMsg='';view='pqc';render()}
   else if(a==='pqback'){view='pqc';render()}
   else if(a==='pqcadd'){
     const n=prompt('단원 이름');
@@ -588,6 +589,12 @@ app.addEventListener('change',e=>{
     save('fc_exam_'+cur,{items:E.items,ans:E.ans});
     $('#pg').textContent=E.ans.filter(a=>a!==null).length+' / '+E.items.length+' 풀었어요';
     return;
+  }
+  if(e.target.dataset.mv!==undefined){
+    const t=e.target.value,p=pqs.find(x=>x.id===e.target.dataset.mv),c=pqcs.find(x=>x.id===t);
+    if(!p||!c)return;
+    p.c=t;save('fc_pq',pqs);send({['pq/'+p.id+'/c']:t});
+    mvMsg=`그림 퀴즈를 '${c.name}' 단원으로 옮겼어요.`;render();return;
   }
   if(e.target.id==='rs'){rsc=e.target.value;return}
   if(e.target.id==='pimg'&&e.target.files[0]&&Q){
