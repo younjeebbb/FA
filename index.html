@@ -142,7 +142,11 @@ async function pull(){
   pqs=Object.entries(db.pq||{}).map(([id,v])=>({id,o:v.o||0,c:v.c||'',boxes:v.boxes||[]})).sort((a,b)=>a.o-b.o);save('fc_pq',pqs);
   pqcs=Object.entries(db.pqc||{}).map(([id,v])=>({id,name:v.name||'(이름 없음)',o:v.o||0})).sort((a,b)=>a.o-b.o);save('fc_pqc',pqcs);
   const us=db.users||{};
-  for(let i=0;i<3;i++){const r=us[i];if(r)U[i]={name:r.name||U[i].name,photo:r.photo||'',progress:r.progress||{},exam:r.exam||null}}
+  for(const k of Object.keys(us)){
+    const i=+k,r=us[k];if(!r||!Number.isInteger(i)||i<0)continue;
+    U[i]={name:r.name||(U[i]&&U[i].name)||'이용자 '+(i+1),photo:r.photo||'',progress:r.progress||{},exam:r.exam||null};
+  }
+  for(let i=0;i<U.length;i++)if(!U[i])U[i]={name:'이용자 '+(i+1),photo:'',progress:{},exam:null};
   save('fc_U',U);
 }
 async function sync(){
@@ -244,7 +248,7 @@ function render(){
 }
 function pick(){
   app.innerHTML=(note?`<p class="hint">${esc(note)}</p>`:'')+`<h2 style="font-size:28px">기말 뿌시자</h2><div class="users">`+U.map((u,i)=>
-    `<div>${avatar(i,true)}<button class="big pri" data-act="user" data-i="${i}">${esc(u.name)}</button><button class="ghost" data-act="rename" data-i="${i}">이름</button></div>`).join('')+`</div><p class="hint">동그라미를 눌러 프로필 사진을 올릴 수 있어요.</p><input type="file" id="pf" accept="image/*" hidden>`;
+    `<div>${avatar(i,true)}<button class="big pri" data-act="user" data-i="${i}">${esc(u.name)}</button><button class="ghost" data-act="rename" data-i="${i}">이름</button></div>`).join('')+`</div>${U.length<4?'<button data-act="uadd">＋ 이용자 추가</button>':''}<p class="hint">동그라미를 눌러 프로필 사진을 올릴 수 있어요.</p><input type="file" id="pf" accept="image/*" hidden>`;
 }
 function home(){
   const p=prog();
@@ -501,6 +505,15 @@ app.addEventListener('click',async e=>{
   const t=e.target.closest('[data-act]');if(!t)return;
   const a=t.dataset.act,id=t.dataset.id,i=+t.dataset.i;
   if(a==='user'){cur=i;save('fc_cur',cur);view='home';render()}
+  else if(a==='uadd'){
+    if(U.length>=4)return alert('이용자는 최대 4명까지예요.');
+    const n=prompt('새 이용자 이름');
+    if(!n||!n.trim())return;
+    try{await pull()}catch(err){}
+    if(U.length>=4)return alert('이미 이용자가 4명이에요.');
+    const k=U.length;U.push({name:n.trim(),photo:'',progress:{},exam:null});
+    save('fc_U',U);send({[`users/${k}/name`]:n.trim()});render();
+  }
   else if(a==='photo'){pi=i;$('#pf').click()}
   else if(a==='rename'){const n=prompt('이름을 입력하세요',U[i].name);if(n&&n.trim()){U[i].name=n.trim();save('fc_U',U);send({[`users/${i}/name`]:U[i].name});render()}}
   else if(a==='add'){view='add';render()}
